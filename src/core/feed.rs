@@ -28,8 +28,10 @@ pub async fn load(scrapers_dir: &Path, topics: &[Topic], limit_per_topic: usize)
 fn dedup_by_title(papers: &mut Vec<Paper>) {
     let mut seen = std::collections::HashSet::new();
     papers.retain(|p| {
+        // Full normalized title as the key — truncating to 60 chars collided
+        // papers sharing a long common prefix (e.g. "…v1" vs "…v2").
         let k: String = p.title.to_lowercase().chars()
-            .filter(|c| c.is_ascii_alphanumeric()).take(60).collect();
+            .filter(|c| c.is_ascii_alphanumeric()).collect();
         // Empty-title papers (missing metadata) are kept, not silently dropped.
         k.is_empty() || seen.insert(k)
     });

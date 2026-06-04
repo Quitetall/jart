@@ -5,11 +5,28 @@ use crate::core::model::Paper;
 use anyhow::{anyhow, Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tokio::time::timeout;
+
+/// Per-adapter wall-clock budget. Spec §4.0: timeout -> SourceError.
+const ADAPTER_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Run `<scrapers_dir>/<source>.py`, sending `request`, returning parsed JSON.
+/// Bounded by `ADAPTER_TIMEOUT`.
 pub async fn run_adapter(scrapers_dir: &Path, source: &str, request: &Value) -> Result<Value> {
+    run_adapter_to(scrapers_dir, source, request, ADAPTER_TIMEOUT).await
+}
+
+/// Same as `run_adapter` but with an explicit budget (used by tests to avoid a
+/// 30s wait against a hung adapter).
+async fn run_adapter_to(
+    scrapers_dir: &Path,
+    source: &str,
+    request: &Value,
+    budget: Duration,
+) -> Result<Value> {
     // Defense-in-depth: `source` names a sibling adapter, never a path.
     // Reject anything that could escape `scrapers_dir` (P1 adds dynamic sources).
     if !source.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -21,6 +38,7 @@ pub async fn run_adapter(scrapers_dir: &Path, source: &str, request: &Value) -> 
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true) // a timed-out adapter is reaped, not orphaned
         .spawn()
         .with_context(|| format!("spawn adapter {}", script.display()))?;
 
@@ -28,7 +46,12 @@ pub async fn run_adapter(scrapers_dir: &Path, source: &str, request: &Value) -> 
     stdin.write_all(request.to_string().as_bytes()).await?;
     drop(stdin); // close -> EOF so the adapter's stdin.read() returns
 
-    let out = child.wait_with_output().await?;
+    // On elapse, the wait_with_output future (owning `child`) is dropped;
+    // kill_on_drop(true) then kills the subprocess. -> SourceError upstream.
+    let out = match timeout(budget, child.wait_with_output()).await {
+        Ok(res) => res?,
+        Err(_) => return Err(anyhow!("adapter {source} timed out after {budget:?}")),
+    };
     if !out.status.success() {
         return Err(anyhow!(
             "adapter {source} exited {}: {}",
@@ -85,5 +108,20 @@ mod tests {
         let err = run_adapter(&fixtures_dir(), "../echo_adapter", &json!({}))
             .await.unwrap_err();
         assert!(err.to_string().contains("invalid adapter name"));
+    }
+
+    #[tokio::test]
+    async fn run_adapter_times_out_on_hung_adapter() {
+        // hang_adapter.py sleeps forever; a short budget must surface a timeout
+        // error (and kill_on_drop reaps the child) rather than hang the test.
+        let err = run_adapter_to(
+            &fixtures_dir(),
+            "hang_adapter",
+            &json!({"op": "x"}),
+            std::time::Duration::from_millis(300),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("timed out"), "got: {err}");
     }
 }

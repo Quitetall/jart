@@ -19,6 +19,9 @@ struct Cli {
     /// Directory holding the built frontend (default: bundled frontend/dist).
     #[arg(long)]
     dist_dir: Option<PathBuf>,
+    /// Config file path (default: $XDG_CONFIG_HOME/research/config.toml).
+    #[arg(long)]
+    config: Option<PathBuf>,
 }
 
 // NOTE: CARGO_MANIFEST_DIR is only the *default* — it bakes in the build-time
@@ -35,7 +38,7 @@ fn default_dist_dir() -> PathBuf {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let cfg = Config::default();
+    let cfg = Config::load(cli.config.clone());
     let ai = Arc::new(AiClient::new(cfg.lamu_url.clone(), cfg.model.clone()));
     let scrapers = cli.scrapers_dir.clone().unwrap_or_else(default_scrapers_dir);
     let dist = cli.dist_dir.clone().unwrap_or_else(default_dist_dir);

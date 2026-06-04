@@ -1,6 +1,7 @@
 //! Config + topic presets (spec §6). TOML at ~/.config/research/config.toml.
 
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Topic {
@@ -66,6 +67,32 @@ impl Config {
     pub fn topics(&self) -> Vec<Topic> {
         if self.topic.is_empty() { eeg_preset() } else { self.topic.clone() }
     }
+
+    /// Load config from `explicit` if given, else `$XDG_CONFIG_HOME/research/config.toml`
+    /// (or `~/.config/research/config.toml`). Missing file -> defaults. A present but
+    /// unreadable/invalid file warns on stderr and falls back to defaults.
+    pub fn load(explicit: Option<PathBuf>) -> Self {
+        let path = explicit.or_else(default_config_path);
+        if let Some(p) = path {
+            if p.exists() {
+                match std::fs::read_to_string(&p) {
+                    Ok(s) => match Self::from_toml(&s) {
+                        Ok(c) => return c,
+                        Err(e) => eprintln!("research: invalid config {}: {e}; using defaults", p.display()),
+                    },
+                    Err(e) => eprintln!("research: cannot read {}: {e}; using defaults", p.display()),
+                }
+            }
+        }
+        Self::default()
+    }
+}
+
+fn default_config_path() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .map(|base| base.join("research/config.toml"))
 }
 
 #[cfg(test)]
@@ -97,5 +124,25 @@ mod tests {
         assert_eq!(c.model, "deepseek-v4-pro");
         assert_eq!(c.topics().len(), 1);
         assert_eq!(c.topics()[0].id, "nlp");
+    }
+
+    #[test]
+    fn load_missing_explicit_path_falls_back_to_default() {
+        let c = Config::load(Some(PathBuf::from("/nonexistent/research/config.toml")));
+        assert_eq!(c.web_port, 8787);
+        assert_eq!(c.topics().len(), 4);
+    }
+
+    #[test]
+    fn load_reads_an_explicit_toml_file() {
+        let dir = std::env::temp_dir().join("research_cfg_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("config.toml");
+        std::fs::write(&p, "web_port = 9123\nmodel = \"local-x\"\n").unwrap();
+        let c = Config::load(Some(p.clone()));
+        assert_eq!(c.web_port, 9123);
+        assert_eq!(c.model, "local-x");
+        assert_eq!(c.topics().len(), 4); // no [[topic]] -> preset
+        let _ = std::fs::remove_file(p);
     }
 }

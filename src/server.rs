@@ -3,7 +3,7 @@
 use crate::core::ai::AiClient;
 use crate::core::config::Topic;
 use crate::core::feed;
-use axum::{extract::State, routing::{get, post}, Json, Router};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,10 +39,11 @@ async fn get_feed(State(s): State<AppState>) -> Json<crate::core::model::Feed> {
 async fn post_summary(
     State(s): State<AppState>,
     Json(req): Json<SummaryReq>,
-) -> Json<serde_json::Value> {
+) -> impl IntoResponse {
     match s.ai.summarize(&req.prompt, &req.items).await {
-        Ok(text) => Json(serde_json::json!({ "text": text })),
-        Err(e) => Json(serde_json::json!({ "error": e.to_string() })),
+        Ok(text) => (StatusCode::OK, Json(serde_json::json!({ "text": text }))),
+        // 502: the failure is upstream (LAMU), not the client's request.
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({ "error": e.to_string() }))),
     }
 }
 
