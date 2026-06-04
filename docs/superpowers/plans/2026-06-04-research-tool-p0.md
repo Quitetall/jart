@@ -270,7 +270,8 @@ def _ts_and_label(published_at):
     if not published_at:
         return 0, ""
     try:
-        dt = datetime.fromisoformat(published_at.replace("Z", "+00:00")).astimezone(timezone.utc)
+        iso = published_at[:-1] + "+00:00" if published_at.endswith("Z") else published_at
+        dt = datetime.fromisoformat(iso).astimezone(timezone.utc)
         return int(dt.timestamp() * 1000), dt.strftime("%Y-%m-%d")
     except (ValueError, AttributeError):
         return 0, ""
@@ -377,6 +378,11 @@ use tokio::process::Command;
 
 /// Run `<scrapers_dir>/<source>.py`, sending `request`, returning parsed JSON.
 pub async fn run_adapter(scrapers_dir: &Path, source: &str, request: &Value) -> Result<Value> {
+    // Defense-in-depth: `source` names a sibling adapter, never a path.
+    // Reject anything that could escape `scrapers_dir` (P1 adds dynamic sources).
+    if !source.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(anyhow!("invalid adapter name: {source:?}"));
+    }
     let script = scrapers_dir.join(format!("{source}.py"));
     let mut child = Command::new("python3")
         .arg(&script)
@@ -440,6 +446,13 @@ mod tests {
         assert_eq!(papers.len(), 1);
         assert_eq!(papers[0].title, "Echo");
         assert_eq!(papers[0].source, "HF");
+    }
+
+    #[tokio::test]
+    async fn run_adapter_rejects_path_traversal_source() {
+        let err = run_adapter(&fixtures_dir(), "../echo_adapter", &json!({}))
+            .await.unwrap_err();
+        assert!(err.to_string().contains("invalid adapter name"));
     }
 }
 ```
@@ -715,6 +728,7 @@ fn dedup_by_title(papers: &mut Vec<Paper>) {
     papers.retain(|p| {
         let k: String = p.title.to_lowercase().chars()
             .filter(|c| c.is_ascii_alphanumeric()).take(60).collect();
+        // Empty-title papers (missing metadata) are kept, not silently dropped.
         k.is_empty() || seen.insert(k)
     });
 }
@@ -1003,8 +1017,9 @@ describe("render", () => {
     expect(node.querySelector(".tlabel")!.textContent).toBe("Foundation models");
     expect(node.querySelector("a")!.getAttribute("href")).toBe("https://hf.co/papers/1");
   });
-  it("rejects javascript: scheme hrefs", () => {
+  it("rejects javascript: and data: scheme hrefs", () => {
     expect(safeHref("javascript:alert(1)")).toBe("#");
+    expect(safeHref("data:text/html,<script>alert(1)</script>")).toBe("#");
     expect(safeHref("https://ok.com")).toBe("https://ok.com");
     expect(safeHref("http://ok.com")).toBe("http://ok.com");
   });
@@ -1209,12 +1224,22 @@ struct Cli {
     /// Run a live end-to-end smoke check (1 fetch + 1 AI round-trip) and exit.
     #[arg(long)]
     check: bool,
+    /// Directory holding the Python source adapters (default: bundled at build time).
+    #[arg(long)]
+    scrapers_dir: Option<PathBuf>,
+    /// Directory holding the built frontend (default: bundled frontend/dist).
+    #[arg(long)]
+    dist_dir: Option<PathBuf>,
 }
 
-fn scrapers_dir() -> PathBuf {
+// NOTE: CARGO_MANIFEST_DIR is only the *default* — it bakes in the build-time
+// source path, which is wrong after `cargo install` to another location. The
+// `--scrapers-dir` / `--dist-dir` flags override it. P-subsequent "Install"
+// replaces these defaults with an install-aware resolver.
+fn default_scrapers_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scrapers")
 }
-fn dist_dir() -> PathBuf {
+fn default_dist_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/dist")
 }
 
@@ -1223,9 +1248,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = Config::default();
     let ai = Arc::new(AiClient::new(cfg.lamu_url.clone(), cfg.model.clone()));
+    let scrapers = cli.scrapers_dir.clone().unwrap_or_else(default_scrapers_dir);
+    let dist = cli.dist_dir.clone().unwrap_or_else(default_dist_dir);
 
     if cli.check {
-        let feed = feed::load(&scrapers_dir(), &cfg.topics()[..1], 3).await;
+        let feed = feed::load(&scrapers, &cfg.topics()[..1], 3).await;
         println!("feed: {} papers, {} errors", feed.papers.len(), feed.errors.len());
         for e in &feed.errors { println!("  ERR {}: {}", e.source, e.message); }
         if let Some(p) = feed.papers.first() {
@@ -1239,10 +1266,10 @@ async fn main() -> Result<()> {
     }
 
     let state = AppState {
-        scrapers_dir: scrapers_dir(),
+        scrapers_dir: scrapers,
         topics: cfg.topics(),
         ai,
-        dist_dir: dist_dir(),
+        dist_dir: dist,
     };
     let app = router(state);
     let addr = format!("127.0.0.1:{}", cfg.web_port);
