@@ -26,10 +26,14 @@ impl AiClient {
     /// an array of grounding strings -> one text answer.
     pub async fn summarize(&self, prompt: &str, items: &[String]) -> Result<String> {
         // Fence each item so a malicious abstract can't override the instruction.
+        // Strip the fence tokens from item text first so it can't break out.
         let fenced = items
             .iter()
             .enumerate()
-            .map(|(i, it)| format!("<source id=\"{}\">\n{it}\n</source>", i + 1))
+            .map(|(i, it)| {
+                let safe = it.replace("</source>", "").replace("<source", "");
+                format!("<source id=\"{}\">\n{safe}\n</source>", i + 1)
+            })
             .collect::<Vec<_>>()
             .join("\n");
         let content = format!(
