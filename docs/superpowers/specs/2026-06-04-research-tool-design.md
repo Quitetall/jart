@@ -47,7 +47,8 @@ research (rust bin)
  ├─ core/
  │   ├─ feed.rs    orchestrate sources → normalized Feed (per-source Result)
  │   ├─ ai.rs      reqwest → LAMU :8020 /v1/chat/completions (model param)
- │   ├─ scrape.rs  spawn python adapter per request; write req JSON, read resp JSON
+ │   ├─ scrape.rs  spawn python adapter per request (stdio framing below)
+ │   ├─ ratelimit.rs  per-source token bucket / pacing (Rust-side, persistent)
  │   ├─ cache.rs   disk cache, per-source TTL
  │   ├─ config.rs  load/merge topics + settings from config file
  │   └─ model.rs   Paper, Repo, Space, MailRow, DriveFile, Feed, SourceError
@@ -66,6 +67,22 @@ frontend/ (vite + ts)         vite build → dist/ (served by rust)
  ├─ index.html
  └─ src/  main.ts · api.ts (typed /api client) · render.ts · types.ts
 ```
+
+### 4.0 Rust ↔ Python adapter protocol (stdio framing)
+
+Each adapter is invoked **once per request** and is stateless. Framing is single-shot:
+
+1. Rust spawns `python scrapers/<source>.py`.
+2. Rust writes one JSON request object `{op, args}` to the adapter's **stdin**, then
+   **closes stdin (EOF)**.
+3. The adapter reads stdin **to EOF**, performs the HTTP call, writes **exactly one** JSON
+   response object to **stdout**, and exits. `stderr` is captured for logs/diagnostics only.
+4. Rust reads stdout to EOF, parses the single JSON object. Non-zero exit, unparseable
+   stdout, or a per-request timeout → that source becomes a `SourceError` (others unaffected).
+
+Because the adapter process does not persist, it holds **no cross-request state** — in
+particular, no rate-limit token bucket (see §5.2). The adapter may apply a single in-call
+429 backoff, but cross-request pacing is the Rust host's job.
 
 ### 4.1 Surfaces share one core
 
@@ -117,9 +134,17 @@ or `--no-cache`) forces a refetch. This prevents re-hitting public APIs on every
 
 ### 5.2 Rate-limit handling
 
-Each adapter enforces its source's rate limit (token-bucket / sleep) and retries on 429
-with exponential backoff. Missing optional API keys degrade gracefully (lower limits, or
-the source returns an empty result with a `SourceError` note rather than failing the feed).
+Cross-request pacing lives in the **Rust host** (`core/ratelimit.rs`), not in the adapters —
+a spawn-per-request Python process is stateless and cannot hold a token bucket across
+invocations. `ratelimit.rs` keeps one persistent token bucket per source (e.g. PubMed 3/s,
+or 10/s when `NCBI_API_KEY` is set) and `feed.rs` acquires a permit before dispatching each
+`scrape.rs` call. Each adapter exposes only its source's rate-limit *config* (requests/sec,
+whether a key raises it) so the Rust limiter can be configured correctly; an adapter may
+additionally apply a single in-call exponential backoff on a 429, but does no cross-request
+pacing.
+
+Missing optional API keys degrade gracefully (lower bucket rate, or the source returns an
+empty result with a `SourceError` note rather than failing the feed).
 
 ## 6. Configuration
 
