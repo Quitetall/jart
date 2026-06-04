@@ -4,6 +4,7 @@ use research::core::ai::AiClient;
 use research::core::config::Config;
 use research::core::feed;
 use research::server::{router, AppState};
+use research::tui::{self, TuiConfig};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -22,6 +23,9 @@ struct Cli {
     /// Config file path (default: $XDG_CONFIG_HOME/research/config.toml).
     #[arg(long)]
     config: Option<PathBuf>,
+    /// Skip the TUI: serve the web GUI and open it in a browser.
+    #[arg(long)]
+    web: bool,
 }
 
 // NOTE: CARGO_MANIFEST_DIR is only the *default* — it bakes in the build-time
@@ -57,16 +61,29 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let state = AppState {
-        scrapers_dir: scrapers,
-        topics: cfg.topics(),
-        ai,
-        dist_dir: dist,
-    };
-    let app = router(state);
+    let topics = cfg.topics();
     let addr = format!("127.0.0.1:{}", cfg.web_port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    println!("research web GUI on http://{addr}  (Ctrl-C to stop)");
-    axum::serve(listener, app).await?;
-    Ok(())
+    let web_url = format!("http://{addr}");
+
+    // The web server runs in the background for BOTH modes: the TUI's `w` key
+    // opens it on demand; `--web` opens it directly.
+    let state = AppState {
+        scrapers_dir: scrapers.clone(),
+        topics: topics.clone(),
+        ai: ai.clone(),
+        dist_dir: dist,
+    };
+    let server = router(state);
+    tokio::spawn(async move { let _ = axum::serve(listener, server).await; });
+
+    if cli.web {
+        let _ = std::process::Command::new("xdg-open").arg(&web_url).spawn();
+        println!("research web GUI on {web_url}  (Ctrl-C to stop)");
+        tokio::signal::ctrl_c().await?;
+        return Ok(());
+    }
+
+    // Default: the TUI is the primary surface.
+    tui::run(TuiConfig { scrapers_dir: scrapers, topics, ai, web_url }).await
 }
