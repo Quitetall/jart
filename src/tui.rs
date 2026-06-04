@@ -55,9 +55,19 @@ fn summary_items(papers: &[Paper], n: usize) -> Vec<String> {
         .collect()
 }
 
-fn open_in_browser(url: &str) {
-    // Best-effort; failure is reflected in the status line by the caller.
-    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+/// Best-effort open; returns whether the launcher spawned so the caller can
+/// give honest status (xdg-open may be absent).
+fn open_in_browser(url: &str) -> bool {
+    std::process::Command::new("xdg-open").arg(url).spawn().is_ok()
+}
+
+/// Restores the terminal on ANY exit from `run` — normal return, `?`, or panic.
+struct TermGuard;
+impl Drop for TermGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+    }
 }
 
 struct App {
@@ -90,6 +100,9 @@ impl App {
     }
 
     fn reload(&mut self, tx: &mpsc::Sender<Msg>) {
+        if self.loading {
+            return; // a load is already in flight; ignore reload spam
+        }
         self.loading = true;
         self.status = "loading papers…".into();
         let (dir, topics, tx) = (self.scrapers_dir.clone(), self.topics.clone(), tx.clone());
@@ -128,17 +141,14 @@ impl App {
         match code {
             KeyCode::Char('q') => return true,
             KeyCode::Char('c') if mods.contains(KeyModifiers::CONTROL) => return true,
-            KeyCode::Esc => {
-                if self.summary.is_some() {
-                    self.summary = None;
-                } else {
-                    return true;
-                }
-            }
+            KeyCode::Esc => self.summary = None, // clear-only; q / Ctrl-C quit
             KeyCode::Char('r') => self.reload(tx),
             KeyCode::Char('w') => {
-                open_in_browser(&self.web_url);
-                self.status = format!("opened {}", self.web_url);
+                self.status = if open_in_browser(&self.web_url) {
+                    format!("opened {}", self.web_url)
+                } else {
+                    "couldn't launch browser (is xdg-open installed?)".into()
+                };
             }
             KeyCode::Char('s') => self.summarize(tx),
             KeyCode::Down | KeyCode::Char('j') => self.select(1),
@@ -147,8 +157,11 @@ impl App {
                 if let Some(i) = self.list.selected() {
                     if let Some(p) = self.feed.papers.get(i) {
                         if !p.link.is_empty() {
-                            open_in_browser(&p.link);
-                            self.status = "opened paper".into();
+                            self.status = if open_in_browser(&p.link) {
+                                "opened paper".into()
+                            } else {
+                                "couldn't launch browser".into()
+                            };
                         }
                     }
                 }
@@ -236,21 +249,17 @@ fn ui(f: &mut Frame, app: &mut App) {
 /// Run the TUI to completion. Restores the terminal even on error.
 pub async fn run(cfg: TuiConfig) -> Result<()> {
     enable_raw_mode()?;
-    let mut out = std::io::stdout();
-    execute!(out, EnterAlternateScreen)?;
-    let mut term = Terminal::new(CrosstermBackend::new(out))?;
+    execute!(std::io::stdout(), EnterAlternateScreen)?;
+    // From here on, the terminal is restored on every exit path (incl. panic).
+    let _guard = TermGuard;
 
+    let mut term = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
     let (tx, mut rx) = mpsc::channel::<Msg>(16);
     let mut app = App::new(cfg);
     app.reload(&tx);
     let mut events = EventStream::new();
 
-    let result = run_loop(&mut term, &mut app, &mut events, &tx, &mut rx).await;
-
-    disable_raw_mode()?;
-    execute!(term.backend_mut(), LeaveAlternateScreen)?;
-    term.show_cursor()?;
-    result
+    run_loop(&mut term, &mut app, &mut events, &tx, &mut rx).await
 }
 
 async fn run_loop(
