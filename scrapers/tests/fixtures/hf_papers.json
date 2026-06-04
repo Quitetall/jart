@@ -1,0 +1,19 @@
+[
+  {
+    "paper": {
+      "id": "2405.12345",
+      "title": "An EEG Foundation Model",
+      "publishedAt": "2026-05-01T00:00:00.000Z",
+      "summary": "We pretrain a transformer on EEG.",
+      "ai_summary": "Pretrains a transformer on large EEG corpora."
+    }
+  },
+  {
+    "paper": {
+      "id": "2405.99999",
+      "title": "Seizure Detection With CNNs",
+      "publishedAt": "2026-04-15T00:00:00.000Z",
+      "summary": "A CNN detects seizures."
+    }
+  }
+]
