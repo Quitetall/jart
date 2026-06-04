@@ -1,0 +1,89 @@
+//! Spawn a Python adapter and exchange one JSON message over stdio.
+//! Framing (spec §4.0): write request to stdin, close stdin, read stdout to EOF.
+
+use crate::core::model::Paper;
+use anyhow::{anyhow, Context, Result};
+use serde_json::{json, Value};
+use std::path::Path;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
+
+/// Run `<scrapers_dir>/<source>.py`, sending `request`, returning parsed JSON.
+pub async fn run_adapter(scrapers_dir: &Path, source: &str, request: &Value) -> Result<Value> {
+    // Defense-in-depth: `source` names a sibling adapter, never a path.
+    // Reject anything that could escape `scrapers_dir` (P1 adds dynamic sources).
+    if !source.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(anyhow!("invalid adapter name: {source:?}"));
+    }
+    let script = scrapers_dir.join(format!("{source}.py"));
+    let mut child = Command::new("python3")
+        .arg(&script)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .with_context(|| format!("spawn adapter {}", script.display()))?;
+
+    let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("no stdin"))?;
+    stdin.write_all(request.to_string().as_bytes()).await?;
+    drop(stdin); // close -> EOF so the adapter's stdin.read() returns
+
+    let out = child.wait_with_output().await?;
+    if !out.status.success() {
+        return Err(anyhow!(
+            "adapter {source} exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    serde_json::from_slice(&out.stdout)
+        .with_context(|| format!("adapter {source} returned non-JSON"))
+}
+
+/// Convenience: run an adapter op and decode `records` into `Vec<Paper>`.
+pub async fn fetch_papers(
+    scrapers_dir: &Path,
+    source: &str,
+    op: &str,
+    args: Value,
+) -> Result<Vec<Paper>> {
+    let resp = run_adapter(scrapers_dir, source, &json!({ "op": op, "args": args })).await?;
+    if let Some(err) = resp.get("error").and_then(|v| v.as_str()) {
+        return Err(anyhow!("adapter {source} error: {err}"));
+    }
+    let recs = resp.get("records").cloned().unwrap_or(Value::Array(vec![]));
+    Ok(serde_json::from_value(recs)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn fixtures_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+    }
+
+    #[tokio::test]
+    async fn run_adapter_roundtrips_records() {
+        let resp = run_adapter(&fixtures_dir(), "echo_adapter", &json!({"op": "x"}))
+            .await.unwrap();
+        assert_eq!(resp["records"][0]["title"], "Echo");
+    }
+
+    #[tokio::test]
+    async fn fetch_papers_decodes_into_struct() {
+        let papers = fetch_papers(&fixtures_dir(), "echo_adapter", "x", json!({}))
+            .await.unwrap();
+        assert_eq!(papers.len(), 1);
+        assert_eq!(papers[0].title, "Echo");
+        assert_eq!(papers[0].source, "HF");
+    }
+
+    #[tokio::test]
+    async fn run_adapter_rejects_path_traversal_source() {
+        let err = run_adapter(&fixtures_dir(), "../echo_adapter", &json!({}))
+            .await.unwrap_err();
+        assert!(err.to_string().contains("invalid adapter name"));
+    }
+}
