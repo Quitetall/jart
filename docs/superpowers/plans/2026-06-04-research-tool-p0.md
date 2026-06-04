@@ -4,7 +4,7 @@
 
 **Goal:** Prove the full integration spine end-to-end — HF papers → Python adapter (stdio) → Rust core → axum `/api` → TypeScript card, plus one LAMU-backed AI summary.
 
-**Architecture:** Single Rust binary (`research`) owns an axum web server + orchestration. A stateless Python adapter fetches HF papers and returns normalized JSON over stdio (single-shot framing: write request, close stdin, read one JSON object back). AI summaries go to the local LAMU OpenAI-compat HTTP endpoint (`/v1/chat/completions`, default model `mimo-v2.5`). A Vite + TypeScript frontend renders the feed and triggers a summary. The frontend builds DOM nodes with `createElement` + `textContent` (no HTML-string injection) so untrusted paper titles/URLs cannot inject script.
+**Architecture:** Single Rust binary (`research`) owns an axum web server + orchestration. A stateless Python adapter fetches HF papers and returns normalized JSON over stdio (single-shot framing: write request, close stdin, read one JSON object back). AI summaries go to the local LAMU OpenAI-compat HTTP endpoint (`:8020/v1/chat/completions`, default LOCAL model `qwen3.6-27b` — that serve surface is local-only; cloud ids 503). A Vite + TypeScript frontend renders the feed and triggers a summary. The frontend builds DOM nodes with `createElement` + `textContent` (no HTML-string injection) so untrusted paper titles/URLs cannot inject script.
 
 **Tech Stack:** Rust (tokio, axum, tower-http, reqwest, serde, serde_json, clap, anyhow; dev: wiremock), Python 3 (stdlib `urllib` only for P0), TypeScript + Vite (dev: vitest, jsdom).
 
@@ -230,7 +230,7 @@ def test_normalize_maps_fields_and_prefers_ai_summary():
     assert a["title"] == "An EEG Foundation Model"
     assert a["link"] == "https://huggingface.co/papers/2405.12345"
     assert a["date_label"] == "2026-05-01"
-    assert a["ts"] == 1746057600000          # 2026-05-01T00:00:00Z in ms
+    assert a["ts"] == 1777593600000          # 2026-05-01T00:00:00Z in ms
     assert a["summary"] == "Pretrains a transformer on large EEG corpora."
     assert recs[1]["summary"] == "A CNN detects seizures."  # no ai_summary -> fallback
 
@@ -618,7 +618,10 @@ pub struct Config {
 }
 
 fn default_port() -> u16 { 8787 }
-fn default_model() -> String { "mimo-v2.5".into() }
+// `lamu serve` :8020 serves LOCAL models only — cloud ids (mimo-v2.5, deepseek-*,
+// claude-*) return spawn_failed there. Default to a local chat model; override
+// `model` in config with any id from `GET :8020/v1/models`.
+fn default_model() -> String { "qwen3.6-27b-uncensored-heretic-v2-q4_k_m".into() }
 fn default_lamu_url() -> String { "http://localhost:8020".into() }
 
 impl Default for Config {
@@ -668,7 +671,7 @@ mod tests {
     fn default_has_eeg_preset_and_port_8787() {
         let c = Config::default();
         assert_eq!(c.web_port, 8787);
-        assert_eq!(c.model, "mimo-v2.5");
+        assert_eq!(c.model, "qwen3.6-27b-uncensored-heretic-v2-q4_k_m");
         assert_eq!(c.topics().len(), 4);
         assert_eq!(c.topics()[0].id, "seizure");
     }
@@ -952,6 +955,7 @@ git commit -m "feat: axum /api/feed + /api/summary + static serving"
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
+    "skipLibCheck": true,
     "lib": ["ES2022", "DOM"],
     "types": ["vitest/globals"]
   },

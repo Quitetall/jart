@@ -9,8 +9,8 @@ Owner: Brian Lam
 A local, terminal-first research aggregator. Type `research` → a TUI pops up showing
 freshly fetched papers, repos, preprints, and (optionally) Gmail/Drive research items,
 with on-demand AI summaries. The same data is also served as a web GUI on a local port,
-opened only when wanted. AI summarization runs through the local LAMU stack (default
-`mimo-v2.5`), not a frontier model.
+opened only when wanted. AI summarization runs through the local LAMU stack (default local model
+`qwen3.6-27b`, served at `:8020`), not a frontier model.
 
 This is a re-platforming of an existing claude.ai artifact (`eeg-research-tracker.html`)
 that depended on two runtime bridges only available inside claude.ai:
@@ -22,7 +22,7 @@ Both are replaced by a local backend.
 - `research` in a terminal opens a TUI with current research items (primary surface).
 - Web GUI available on demand on a local port (`8787`), not auto-opened every launch.
 - All source data fetched from **public APIs directly** (no claude.ai connectors).
-- All AI summarization via **LAMU HTTP** (OpenAI-compat), default local `mimo-v2.5`.
+- All AI summarization via **LAMU HTTP** (OpenAI-compat `:8020`), default local `qwen3.6-27b`.
 - Topics are **user-configurable** via a config file; ships with an EEG/BCI preset.
 - Resilient: one failing source does not break the rest; cached so reopening is cheap.
 
@@ -90,18 +90,25 @@ The TUI calls `core::feed` / `core::ai` functions **directly** (in-process). The
 calls the same functions through axum `/api/*` handlers. There is exactly one feed-loading
 and one AI path; the TUI and web GUI are two renderers over it.
 
-### 4.2 AI surface (resolved from reading `lamu-rs`)
+### 4.2 AI surface (verified empirically 2026-06-04)
 
-LAMU already serves an OpenAI-compat HTTP API (`lamu-api/src/openai_compat.rs`,
-`lamu serve`, default `:8020`). Model routing is name-driven (`lamu-providers/cloud_config.rs`):
-`mimo-v2.5` / `deepseek-*` / `qwen-*` route to local-or-cloud; `claude-opus-4-8` routes to
-Anthropic `/v1/messages`. Therefore:
+LAMU serves an OpenAI-compat HTTP API (`lamu-api/src/openai_compat.rs`, `lamu serve`,
+default `:8020`). **Verified at runtime: this serve surface routes LOCAL GGUF models
+ONLY.** A `POST :8020/v1/chat/completions` with `model: "qwen3.6-27b-…"` returns 200
+(~57 tok/s); with `model: "mimo-v2.5"` it returns 503 `spawn_failed` (it tries to spawn
+a *local* model by that name and fails). Cloud models (`mimo-v2.5`, `deepseek-*`,
+`claude-*`) are NOT reachable via the serve surface — they go through the MCP tool
+`cloud_query`. (The bifrost gateway on `:8080` is up but its cloud chat route returned 405
+to every probe; pin it before relying on it.) See memory `reference-lamu-serve-surface`.
+Therefore:
 
-- Rust talks to LAMU with a **plain `reqwest` POST** to `/v1/chat/completions`. No
-  hand-written MCP client.
-- The "local vs cloud-Claude" choice is **just the model name** — one client, one env var.
-  `RESEARCH_MODEL` (default `mimo-v2.5`). Cloud Claude requires `ANTHROPIC_API_KEY` in
-  LAMU's environment (already present for the reviewer ensemble).
+- Rust talks to LAMU with a **plain `reqwest` POST** to `:8020/v1/chat/completions`. No
+  hand-written MCP client. This is correct for **local** models, which is the P0 default.
+- Default `model = "qwen3.6-27b-uncensored-heretic-v2-q4_k_m"` (a local chat model already
+  loaded on the 4090). Any id from `GET :8020/v1/models` works via config. This keeps the
+  AI fully local — matching "I don't need a frontier model to recap articles."
+- **Cloud** summaries (mimo/deepseek/claude) are deferred: they require either an MCP
+  `cloud_query` bridge or a pinned bifrost route, neither needed for P0.
 - `ai.rs` exposes `summarize(prompt: &str, items: &[String]) -> String`, mirroring the old
   `askClaude(prompt, data)` contract.
 
@@ -152,7 +159,7 @@ A single config file at `~/.config/research/config.toml` (override `--config`):
 
 ```toml
 web_port = 8787
-model = "mimo-v2.5"          # any LAMU-routable model name
+model = "qwen3.6-27b-uncensored-heretic-v2-q4_k_m"   # any local id from :8020/v1/models
 lamu_url = "http://localhost:8020"
 default_topics = ["seizure", "foundation", "bci", "hardware"]
 
