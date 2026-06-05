@@ -42,13 +42,18 @@ def date_window(today=None):
 
 
 def matches(text, query):
-    """Pure: True if any whitespace-delimited query token appears in text
-    (case-insensitive). Empty query matches everything."""
+    """Pure relevance gate for the date-range window (bioRxiv has no keyword
+    search, so this filters an all-category recent collection). The FIRST query
+    token is the domain anchor and MUST appear as a whole word — generic ML
+    tokens like "detection"/"deep"/"learning" can't pull in off-topic preprints
+    (a deep-learning paper about parrots no longer matches an "EEG ..." query).
+    Word-boundary anchored (no "deep"→"deepen"). Empty query matches everything.
+    Put the most distinctive domain term first in a topic's query."""
     tokens = [t for t in (query or "").split() if t]
     if not tokens:
         return True
-    pattern = "|".join(re.escape(t) for t in tokens)
-    return re.search(pattern, text or "", re.IGNORECASE) is not None
+    anchor = tokens[0]
+    return re.search(r"\b" + re.escape(anchor) + r"\b", text or "", re.IGNORECASE) is not None
 
 
 def _ts_and_label(date_str):

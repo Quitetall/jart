@@ -165,7 +165,7 @@ async fn paper_task(
         .await
     {
         Ok(papers) => TaskOut::Papers(papers),
-        Err(e) => TaskOut::Err(SourceError { source: label, message: e.to_string() }),
+        Err(e) => TaskOut::Err(SourceError { source: label, message: short_err(&e) }),
     }
 }
 
@@ -185,7 +185,7 @@ async fn repo_task(
     .await
     {
         Ok(repos) => TaskOut::Repos(repos),
-        Err(e) => TaskOut::Err(SourceError { source: "HF/repos".into(), message: e.to_string() }),
+        Err(e) => TaskOut::Err(SourceError { source: "HF/repos".into(), message: short_err(&e) }),
     }
 }
 
@@ -205,8 +205,14 @@ async fn space_task(
     .await
     {
         Ok(spaces) => TaskOut::Spaces(spaces),
-        Err(e) => TaskOut::Err(SourceError { source: "HF/spaces".into(), message: e.to_string() }),
+        Err(e) => TaskOut::Err(SourceError { source: "HF/spaces".into(), message: short_err(&e) }),
     }
+}
+
+/// First line of an error, capped — an adapter's full stderr traceback must not
+/// bloat the serialized Feed (the message is a `Serialize` field shown in the UI).
+fn short_err(e: &anyhow::Error) -> String {
+    e.to_string().lines().next().unwrap_or("error").chars().take(500).collect()
 }
 
 fn dedup_by_title(papers: &mut Vec<Paper>) {

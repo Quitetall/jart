@@ -41,10 +41,14 @@ def test_matches_keyword_hit_and_miss():
     coll = _coll()
     eeg = coll[0]["title"] + " " + coll[0]["abstract"]
     protein = coll[1]["title"] + " " + coll[1]["abstract"]
-    assert biorxiv.matches(eeg, "seizure EEG") is True
-    assert biorxiv.matches(protein, "seizure EEG") is False
-    # case-insensitive, any-token semantics
-    assert biorxiv.matches(protein, "FOLDING") is True
+    # first token is the required domain anchor (whole word)
+    assert biorxiv.matches(eeg, "seizure EEG") is True            # anchor "seizure" present
+    assert biorxiv.matches(protein, "seizure EEG") is False       # anchor "seizure" absent
+    # generic trailing tokens can't rescue a missing anchor
+    assert biorxiv.matches(protein, "seizure folding") is False   # anchor "seizure" absent
+    assert biorxiv.matches(protein, "folding seizure") is True    # anchor "folding" present
+    # word-boundary: a substring of the anchor does not count
+    assert biorxiv.matches("a deepen study", "deep learning") is False
     # empty query keeps everything
     assert biorxiv.matches(protein, "") is True
 
