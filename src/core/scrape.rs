@@ -3,6 +3,7 @@
 
 use crate::core::model::Paper;
 use anyhow::{anyhow, Context, Result};
+use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 use std::path::Path;
 use std::time::Duration;
@@ -63,6 +64,27 @@ async fn run_adapter_to(
         .with_context(|| format!("adapter {source} returned non-JSON"))
 }
 
+/// Generic: run an adapter op and decode its `records` array into `Vec<T>`.
+///
+/// Reuses `run_adapter` (and thus its `ADAPTER_TIMEOUT` + `kill_on_drop`
+/// reaping). An adapter that returns an `{error}` envelope (its graceful
+/// failure mode, spec §4.0) becomes an `Err` here so the caller can surface a
+/// `SourceError` instead of crashing.
+pub async fn fetch_records<T: DeserializeOwned>(
+    scrapers_dir: &Path,
+    source: &str,
+    op: &str,
+    args: Value,
+) -> Result<Vec<T>> {
+    let resp = run_adapter(scrapers_dir, source, &json!({ "op": op, "args": args })).await?;
+    if let Some(err) = resp.get("error").and_then(|v| v.as_str()) {
+        return Err(anyhow!("adapter {source} error: {err}"));
+    }
+    let recs = resp.get("records").cloned().unwrap_or(Value::Array(vec![]));
+    serde_json::from_value(recs)
+        .with_context(|| format!("adapter {source}/{op} returned undecodable records"))
+}
+
 /// Convenience: run an adapter op and decode `records` into `Vec<Paper>`.
 pub async fn fetch_papers(
     scrapers_dir: &Path,
@@ -70,12 +92,7 @@ pub async fn fetch_papers(
     op: &str,
     args: Value,
 ) -> Result<Vec<Paper>> {
-    let resp = run_adapter(scrapers_dir, source, &json!({ "op": op, "args": args })).await?;
-    if let Some(err) = resp.get("error").and_then(|v| v.as_str()) {
-        return Err(anyhow!("adapter {source} error: {err}"));
-    }
-    let recs = resp.get("records").cloned().unwrap_or(Value::Array(vec![]));
-    Ok(serde_json::from_value(recs)?)
+    fetch_records::<Paper>(scrapers_dir, source, op, args).await
 }
 
 #[cfg(test)]
@@ -101,6 +118,20 @@ mod tests {
         assert_eq!(papers.len(), 1);
         assert_eq!(papers[0].title, "Echo");
         assert_eq!(papers[0].source, "HF");
+    }
+
+    #[tokio::test]
+    async fn fetch_records_decodes_generic_type() {
+        // The repo_echo fixture emits a Repo-shaped record; fetch_records::<Repo>
+        // proves the generic decode is not Paper-bound.
+        use crate::core::model::Repo;
+        let repos: Vec<Repo> =
+            fetch_records(&fixtures_dir(), "repo_echo", "repo_search", json!({}))
+                .await
+                .unwrap();
+        assert_eq!(repos.len(), 1);
+        assert_eq!(repos[0].kind, "model");
+        assert_eq!(repos[0].name, "org/eeg-net");
     }
 
     #[tokio::test]

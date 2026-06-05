@@ -1,0 +1,24 @@
+{
+  "total": 2,
+  "offset": 0,
+  "data": [
+    {
+      "title": "An EEG Transformer for Seizure Forecasting",
+      "abstract": "We present a transformer model trained on long-horizon EEG recordings to forecast seizures with calibrated uncertainty.",
+      "year": 2025,
+      "venue": "NeurIPS",
+      "url": "https://www.semanticscholar.org/paper/abc123",
+      "externalIds": {"DOI": "10.1234/eeg.2025.001", "ArXiv": "2501.00001"},
+      "publicationDate": "2025-03-15"
+    },
+    {
+      "title": "Compressing EEG With Learned Codecs",
+      "abstract": null,
+      "year": 2024,
+      "venue": "ICML",
+      "url": null,
+      "externalIds": {"DOI": "10.5678/eeg.2024.042"},
+      "publicationDate": null
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "title": "An EEG Foundation Model for Seizure Detection",
+    "authors": "Lam, B.; Doe, J.",
+    "doi": "10.1101/2026.05.01.111111",
+    "date": "2026-05-01",
+    "category": "neuroscience",
+    "abstract": "We pretrain a transformer on a large EEG corpus and fine-tune it for seizure detection across subjects.",
+    "published": "10.1038/s41586-026-00001-2",
+    "server": "biorxiv"
+  },
+  {
+    "title": "Structural Dynamics of Protein Folding in Membranes",
+    "authors": "Roe, A.",
+    "doi": "10.1101/2026.04.20.222222",
+    "date": "2026-04-20",
+    "category": "biophysics",
+    "abstract": "Molecular dynamics simulations reveal lipid-driven folding pathways of membrane proteins.",
+    "published": "NA",
+    "server": "biorxiv"
+  }
+]

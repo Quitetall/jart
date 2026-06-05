@@ -1,0 +1,59 @@
+<?xml version="1.0" ?>
+<!DOCTYPE PubmedArticleSet PUBLIC "-//NLM//DTD PubMedArticle, 1st January 2019//EN" "https://dtd.nlm.nih.gov/ncbi/pubmed/out/pubmed_190101.dtd">
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation Status="MEDLINE" Owner="NLM">
+      <PMID Version="1">40123456</PMID>
+      <Article PubModel="Print">
+        <Journal>
+          <JournalIssue CitedMedium="Internet">
+            <PubDate>
+              <Year>2026</Year>
+              <Month>May</Month>
+              <Day>12</Day>
+            </PubDate>
+          </JournalIssue>
+          <Title>Journal of Neural Engineering</Title>
+        </Journal>
+        <ArticleTitle>A <i>self-supervised</i> EEG foundation model</ArticleTitle>
+        <Abstract>
+          <AbstractText Label="BACKGROUND">EEG decoding has long relied on hand-crafted features and small labeled datasets, which limits generalization across subjects and recording montages.</AbstractText>
+          <AbstractText Label="METHODS">We pretrain a transformer on <sup>large</sup> unlabeled EEG corpora.</AbstractText>
+          <AbstractText Label="RESULTS">The model improves downstream seizure detection by a wide margin.</AbstractText>
+        </Abstract>
+      </Article>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">40123456</ArticleId>
+        <ArticleId IdType="pii">S0123456789</ArticleId>
+        <ArticleId IdType="doi">10.1088/1741-2552/abcd12</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation Status="MEDLINE" Owner="NLM">
+      <PMID Version="2">40987654</PMID>
+      <Article PubModel="Electronic">
+        <Journal>
+          <JournalIssue CitedMedium="Internet">
+            <PubDate>
+              <Year>2025</Year>
+            </PubDate>
+          </JournalIssue>
+          <Title>Frontiers in Neuroscience</Title>
+        </Journal>
+        <ArticleTitle>A CNN for seizure detection</ArticleTitle>
+        <Abstract>
+          <AbstractText>A convolutional network detects seizures from scalp EEG.</AbstractText>
+        </Abstract>
+      </Article>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">40987654</ArticleId>
+        <ArticleId IdType="pii">S9876543210</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>

@@ -5,9 +5,11 @@
 //! r reload · q / Ctrl-C quit · Esc clear summary.
 
 use crate::core::ai::AiClient;
+use crate::core::cache::Cache;
 use crate::core::config::Topic;
 use crate::core::feed;
 use crate::core::model::{Feed, Paper};
+use crate::core::ratelimit::Pacer;
 use anyhow::Result;
 use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
@@ -29,6 +31,8 @@ pub struct TuiConfig {
     pub topics: Vec<Topic>,
     pub ai: Arc<AiClient>,
     pub web_url: String,
+    pub cache: Arc<Cache>,
+    pub pacer: Arc<Pacer>,
 }
 
 /// Async results delivered back to the UI loop.
@@ -75,6 +79,8 @@ struct App {
     topics: Vec<Topic>,
     ai: Arc<AiClient>,
     web_url: String,
+    cache: Arc<Cache>,
+    pacer: Arc<Pacer>,
     feed: Feed,
     list: ListState,
     status: String,
@@ -90,6 +96,8 @@ impl App {
             topics: cfg.topics,
             ai: cfg.ai,
             web_url: cfg.web_url,
+            cache: cfg.cache,
+            pacer: cfg.pacer,
             feed: Feed::default(),
             list: ListState::default(),
             status: "starting…".into(),
@@ -106,8 +114,9 @@ impl App {
         self.loading = true;
         self.status = "loading papers…".into();
         let (dir, topics, tx) = (self.scrapers_dir.clone(), self.topics.clone(), tx.clone());
+        let (cache, pacer) = (self.cache.clone(), self.pacer.clone());
         tokio::spawn(async move {
-            let feed = feed::load(&dir, &topics, 8).await;
+            let feed = feed::load(&dir, &topics, 8, &cache, &pacer).await;
             let _ = tx.send(Msg::Feed(feed)).await;
         });
     }

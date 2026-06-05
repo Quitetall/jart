@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "62cb0dd21d7cb0e28b9ab54f",
+    "id": "openbmb/eeg-foundation",
+    "modelId": "openbmb/eeg-foundation",
+    "likes": 42,
+    "trendingScore": 18,
+    "downloads": 12345
+  },
+  {
+    "_id": "641dfb05a7e1362dd42cc45d",
+    "modelId": "Dseid/EEG_classifier",
+    "likes": 1,
+    "downloads": 0
+  },
+  {
+    "_id": "651f4ab322aeffca25f3c438"
+  }
+]

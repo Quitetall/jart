@@ -1,8 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
 use research::core::ai::AiClient;
+use research::core::cache::Cache;
 use research::core::config::Config;
 use research::core::feed;
+use research::core::ratelimit::Pacer;
 use research::server::{router, AppState};
 use research::tui::{self, TuiConfig};
 use std::path::PathBuf;
@@ -46,9 +48,13 @@ async fn main() -> Result<()> {
     let ai = Arc::new(AiClient::new(cfg.lamu_url.clone(), cfg.model.clone()));
     let scrapers = cli.scrapers_dir.clone().unwrap_or_else(default_scrapers_dir);
     let dist = cli.dist_dir.clone().unwrap_or_else(default_dist_dir);
+    // One shared cache + pacer for every surface (server, --check, TUI): the
+    // pacer's per-source state and the disk cache must be process-wide.
+    let cache = Arc::new(Cache::new());
+    let pacer = Arc::new(Pacer::new());
 
     if cli.check {
-        let feed = feed::load(&scrapers, &cfg.topics()[..1], 3).await;
+        let feed = feed::load(&scrapers, &cfg.topics()[..1], 3, &cache, &pacer).await;
         println!("feed: {} papers, {} errors", feed.papers.len(), feed.errors.len());
         for e in &feed.errors { println!("  ERR {}: {}", e.source, e.message); }
         if let Some(p) = feed.papers.first() {
@@ -73,6 +79,8 @@ async fn main() -> Result<()> {
         topics: topics.clone(),
         ai: ai.clone(),
         dist_dir: dist,
+        cache: cache.clone(),
+        pacer: pacer.clone(),
     };
     let server = router(state);
     tokio::spawn(async move { let _ = axum::serve(listener, server).await; });
@@ -85,5 +93,5 @@ async fn main() -> Result<()> {
     }
 
     // Default: the TUI is the primary surface.
-    tui::run(TuiConfig { scrapers_dir: scrapers, topics, ai, web_url }).await
+    tui::run(TuiConfig { scrapers_dir: scrapers, topics, ai, web_url, cache, pacer }).await
 }
