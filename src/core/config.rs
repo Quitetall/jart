@@ -1,4 +1,4 @@
-//! Config + topic presets (spec §6). TOML at ~/.config/research/config.toml.
+//! Config + topic presets (spec §6). TOML at ~/.config/jart/config.toml.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -68,8 +68,8 @@ impl Config {
         if self.topic.is_empty() { eeg_preset() } else { self.topic.clone() }
     }
 
-    /// Load config from `explicit` if given, else `$XDG_CONFIG_HOME/research/config.toml`
-    /// (or `~/.config/research/config.toml`). Missing file -> defaults. A present but
+    /// Load config from `explicit` if given, else `$XDG_CONFIG_HOME/jart/config.toml`
+    /// (or `~/.config/jart/config.toml`). Missing file -> defaults. A present but
     /// unreadable/invalid file warns on stderr and falls back to defaults.
     pub fn load(explicit: Option<PathBuf>) -> Self {
         let path = explicit.or_else(default_config_path);
@@ -78,9 +78,9 @@ impl Config {
                 match std::fs::read_to_string(&p) {
                     Ok(s) => match Self::from_toml(&s) {
                         Ok(c) => return c,
-                        Err(e) => eprintln!("research: invalid config {}: {e}; using defaults", p.display()),
+                        Err(e) => eprintln!("jart: invalid config {}: {e}; using defaults", p.display()),
                     },
-                    Err(e) => eprintln!("research: cannot read {}: {e}; using defaults", p.display()),
+                    Err(e) => eprintln!("jart: cannot read {}: {e}; using defaults", p.display()),
                 }
             }
         }
@@ -92,7 +92,7 @@ fn default_config_path() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .map(|base| base.join("research/config.toml"))
+        .map(|base| base.join("jart/config.toml"))
 }
 
 #[cfg(test)]

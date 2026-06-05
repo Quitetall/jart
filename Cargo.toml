@@ -1,11 +1,11 @@
 [package]
-name = "research"
+name = "jart"
 version = "0.1.0"
 edition = "2021"
+description = "jart — Just Another Research Tool: a local, terminal-first research aggregator"
 
-[[bin]]
-name = "research"
-path = "src/main.rs"
+# Binaries are auto-detected: src/main.rs -> `jart`, src/bin/research.rs -> `research`
+# (both thin wrappers over jart::cli::run).
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

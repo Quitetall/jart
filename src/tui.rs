@@ -214,7 +214,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Title / status bar.
     let head = format!(
-        "research · {}{}",
+        "jart · {}{}",
         if app.loading { "loading… · " } else { "" },
         app.status
     );

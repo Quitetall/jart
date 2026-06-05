@@ -25,15 +25,15 @@ impl Default for Cache {
 }
 
 impl Cache {
-    /// Cache under `$XDG_CACHE_HOME/research` (or `~/.cache/research`). If
-    /// neither env var is set, falls back to the system temp dir so the ctor is
-    /// always infallible.
+    /// Cache under `$XDG_CACHE_HOME/jart` (or `~/.cache/jart`). If neither env
+    /// var is set, falls back to the system temp dir so the ctor is always
+    /// infallible.
     pub fn new() -> Self {
         let root = std::env::var_os("XDG_CACHE_HOME")
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
             .unwrap_or_else(std::env::temp_dir)
-            .join("research");
+            .join("jart");
         Cache::with_root(root)
     }
 

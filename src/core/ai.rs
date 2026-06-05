@@ -56,7 +56,7 @@ impl AiClient {
             // Log the upstream body locally for debugging, but don't surface it
             // to API clients — it could echo keys/routing (CWE-209).
             let body = resp.text().await.unwrap_or_default();
-            eprintln!("research: LAMU {status} body: {}", body.chars().take(500).collect::<String>());
+            eprintln!("jart: LAMU {status} body: {}", body.chars().take(500).collect::<String>());
             return Err(anyhow!("AI upstream error (LAMU {status})"));
         }
         let val: serde_json::Value = resp.json().await.context("LAMU returned non-JSON")?;
