@@ -1,6 +1,6 @@
 //! axum HTTP surface. Serves the built frontend and the JSON API.
 
-use crate::core::ai::AiClient;
+use crate::core::ai::Summarizer;
 use crate::core::cache::Cache;
 use crate::core::config::Topic;
 use crate::core::feed;
@@ -15,7 +15,7 @@ use tower_http::services::ServeDir;
 pub struct AppState {
     pub scrapers_dir: PathBuf,
     pub topics: Vec<Topic>,
-    pub ai: Arc<AiClient>,
+    pub ai: Arc<dyn Summarizer>,
     pub dist_dir: PathBuf,
     pub cache: Arc<Cache>,
     pub pacer: Arc<Pacer>,
@@ -54,6 +54,7 @@ async fn post_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::ai::AiClient;
 
     fn fixtures_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")

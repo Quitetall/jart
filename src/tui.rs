@@ -4,7 +4,7 @@
 //! Keys: ↑/↓ (or k/j) move · Enter open paper · w open web GUI · s summarize ·
 //! r reload · q / Ctrl-C quit · Esc clear summary.
 
-use crate::core::ai::AiClient;
+use crate::core::ai::Summarizer;
 use crate::core::cache::Cache;
 use crate::core::config::Topic;
 use crate::core::feed;
@@ -29,7 +29,7 @@ const SUMMARY_PROMPT: &str =
 pub struct TuiConfig {
     pub scrapers_dir: PathBuf,
     pub topics: Vec<Topic>,
-    pub ai: Arc<AiClient>,
+    pub ai: Arc<dyn Summarizer>,
     pub web_url: String,
     pub cache: Arc<Cache>,
     pub pacer: Arc<Pacer>,
@@ -77,7 +77,7 @@ impl Drop for TermGuard {
 struct App {
     scrapers_dir: PathBuf,
     topics: Vec<Topic>,
-    ai: Arc<AiClient>,
+    ai: Arc<dyn Summarizer>,
     web_url: String,
     cache: Arc<Cache>,
     pacer: Arc<Pacer>,

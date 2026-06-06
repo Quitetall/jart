@@ -1,7 +1,7 @@
 //! CLI entrypoint shared by the `jart` and `research` binaries (same tool, two
 //! names). Both `src/main.rs` and `src/bin/research.rs` just call `run()`.
 
-use crate::core::ai::AiClient;
+use crate::core::ai::{AiClient, Summarizer};
 use crate::core::cache::Cache;
 use crate::core::config::Config;
 use crate::core::feed;
@@ -48,7 +48,7 @@ fn default_dist_dir() -> PathBuf {
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let cfg = Config::load(cli.config.clone());
-    let ai = Arc::new(AiClient::new(cfg.lamu_url.clone(), cfg.model.clone()));
+    let ai: Arc<dyn Summarizer> = Arc::new(AiClient::new(cfg.lamu_url.clone(), cfg.model.clone()));
     let scrapers = cli.scrapers_dir.clone().unwrap_or_else(default_scrapers_dir);
     let dist = cli.dist_dir.clone().unwrap_or_else(default_dist_dir);
     // One shared cache + pacer for every surface (server, --check, TUI): the
