@@ -34,6 +34,10 @@ const PAPER_SOURCES: &[PaperSource] = &[
     PaperSource { adapter: "pubmed", op: "search", label: "PubMed" },
     PaperSource { adapter: "biorxiv", op: "search", label: "Preprint" },
     PaperSource { adapter: "semantic", op: "search", label: "Semantic" },
+    // Web search (Serper/Tavily). Opt-in: the adapter returns empty without an API
+    // key, so it adds general-web results when SERPER_API_KEY/TAVILY_API_KEY is set
+    // and is a silent no-op otherwise.
+    PaperSource { adapter: "web", op: "search", label: "Web" },
 ];
 
 /// Outcome of one fan-out task. Kept as an enum (not a bare Result) so the
@@ -297,8 +301,9 @@ mod tests {
         let pacer = Pacer::new();
         let feed = load(Path::new("/nonexistent"), &topics, 5, &cache, &pacer).await;
         assert_eq!(feed.papers.len(), 0);
-        // 4 paper sources + repo + space = 6 tasks, all failing.
-        assert_eq!(feed.errors.len(), 6);
+        // 5 paper sources (HF, PubMed, Preprint, Semantic, Web) + repo + space = 7
+        // tasks, all failing.
+        assert_eq!(feed.errors.len(), 7);
         let _ = std::fs::remove_dir_all(&root);
     }
 
