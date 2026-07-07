@@ -1,6 +1,7 @@
 [package]
 name = "jart"
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
 description = "jart — Just Another Research Tool: a local, terminal-first research aggregator"
 
