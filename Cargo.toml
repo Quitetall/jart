@@ -4,6 +4,10 @@ version = "0.1.0"
 license = "MIT"
 edition = "2021"
 description = "jart — Just Another Research Tool: a local, terminal-first research aggregator"
+repository = "https://github.com/Quitetall/jart"
+readme = "README.md"
+keywords = ["research", "arxiv", "tui", "aggregator", "llm"]
+categories = ["command-line-utilities", "science"]
 
 # Binaries are auto-detected: src/main.rs -> `jart`, src/bin/research.rs -> `research`
 # (both thin wrappers over jart::cli::run).
